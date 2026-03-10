@@ -1,42 +1,79 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TextInput, Button, FlatList } from 'react-native';
+import { StyleSheet, Text, View, TextInput, Button, FlatList, TouchableOpacity } from 'react-native';
+import * as SQLite from 'expo-sqlite';
+
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+
+const db = SQLite.openDatabaseSync('shoppingList.db');
 
 export default function App() {
 
   const [item, setItem] = useState('');
+  const [amount, setAmount] = useState('');
   const [shoppingList, setShoppingList] = useState([]);
 
-  const addItem = () => {
+  useEffect(() => {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS shoppingList (id INTEGER PRIMARY KEY NOT NULL, item TEXT, amount TEXT);
+      `);
+    updateList();
+  }, []);
+
+  const updateList = () => {
+    const result = db.getAllSync('SELECT * FROM shoppingList');
+    setShoppingList(result);
+  };
+
+  const saveItem = () => {
     if (item.length > 0) {
-      setShoppingList([...shoppingList, { key: Date.now().toString(), text: item }]);
+      db.runSync('INSERT INTO shoppingList (item, amount) VALUES (?, ?)', [item, amount]);
       setItem('');
+      setAmount('');
+      updateList();
     }
   };
 
-  const clear = () => {
-    setShoppingList([]);
+  const deleteItem = (id) => {
+    db.runSync('DELETE FROM shoppingList WHERE id = ?', [id]);
+    updateList();
   };
 
   return (
-    <View style={styles.container}>
-      <TextInput style={styles.input}
-        onChangeText={text => setItem(text)}
-        value={item}
-      />
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.container}>
+        <TextInput style={styles.input}
+          placeholder='Item'
+          onChangeText={text => setItem(text)}
+          value={item}
+        />
 
-      <View style={styles.buttons}>
-        <Button title='ADD' onPress={addItem} />
-        <Button title='CLEAR' onPress={clear} />
-      </View>
+        <TextInput style={styles.input}
+          placeholder='Amount'
+          onChangeText={text => setAmount(text)}
+          value={amount}
+        />
 
-      <Text style={styles.title}>Shopping List</Text>
-      <FlatList data={shoppingList}
-        renderItem={({ item }) => <Text style={styles.listItem}>{item.text}</Text>}
-        keyExtractor={item => item.key}
-      />
-      <StatusBar style='auto' />
-    </View>
+        <View style={styles.buttons}>
+          <Button title='SAVE' onPress={saveItem} />
+        </View>
+
+        <Text style={styles.title}>Shopping List</Text>
+        <FlatList
+          data={shoppingList}
+          keyExtractor={item => item.id.toString()}
+          renderItem={({ item }) => (
+            <View style={styles.listItemContainer}>
+              <Text style={styles.listItem}>{item.item}, {item.amount}</Text>
+              <TouchableOpacity onPress={() => deleteItem(item.id)}>
+                <Text style={styles.boughtText}> Bought</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        />
+        <StatusBar style='auto' />
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -52,7 +89,6 @@ const styles = StyleSheet.create({
     width: '50%',
     borderColor: 'gray',
     borderWidth: 1,
-    marginTop: 100,
     marginBottom: 10,
     padding: 10,
     textAlign: 'center',
@@ -76,5 +112,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 5,
+  },
+
+  list: {
+    width: '80%',
+  },
+
+  listItemContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+
+  boughtText: {
+    fontSize: 16,
+    color: 'blue',
+    marginLeft: 10,
   },
 });
