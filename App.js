@@ -1,6 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TextInput, Button, FlatList, TouchableOpacity } from 'react-native';
+import React, { use, useEffect, useState } from 'react';
+import { StyleSheet, View, FlatList, Keyboard } from 'react-native';
+import {
+  Provider as PaperProvider,
+  TextInput,
+  Button,
+  List,
+  IconButton,
+  Appbar,
+  Divider,
+  Card,
+  DefaultTheme
+} from 'react-native-paper'
 import * as SQLite from 'expo-sqlite';
 
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
@@ -12,67 +22,123 @@ export default function App() {
   const [item, setItem] = useState('');
   const [amount, setAmount] = useState('');
   const [shoppingList, setShoppingList] = useState([]);
+  const [db, setDb] = useState(null);
 
   useEffect(() => {
-    db.execSync(`
-      CREATE TABLE IF NOT EXISTS shoppingList (id INTEGER PRIMARY KEY NOT NULL, item TEXT, amount TEXT);
-      `);
-    updateList();
+    async function initializeDatabase() {
+      try {
+        const database = await SQLite.openDatabaseAsync('shoppingList.db');
+        setDb(database);
+
+        await database.execAsync(`
+          CREATE TABLE IF NOT EXISTS shoppingList (id INTEGER PRIMARY KEY NOT NULL, item TEXT, amount TEXT);
+        `);
+
+        const result = await database.getAllAsync('SELECT * FROM shoppingList');
+        setShoppingList(result);
+      } catch (error) {
+        console.error("Tietokannan alustus epäonnistui:", error);
+      }
+    }
+
+    initializeDatabase();
   }, []);
 
-  const updateList = () => {
-    const result = db.getAllSync('SELECT * FROM shoppingList');
-    setShoppingList(result);
-  };
-
-  const saveItem = () => {
-    if (item.length > 0) {
-      db.runSync('INSERT INTO shoppingList (item, amount) VALUES (?, ?)', [item, amount]);
-      setItem('');
-      setAmount('');
-      updateList();
+  const updateList = async () => {
+    if (!db) return;
+    try {
+      const result = await db.getAllAsync('SELECT * FROM shoppingList');
+      setShoppingList(result);
+    } catch (error) {
+      console.error("Listan päivitys epäonnistui:", error);
     }
   };
 
-  const deleteItem = (id) => {
-    db.runSync('DELETE FROM shoppingList WHERE id = ?', [id]);
-    updateList();
+  const saveItem = async () => {
+    if (item.length > 0 && db) {
+      try {
+        await db.runAsync('INSERT INTO shoppingList (item, amount) VALUES (?, ?)', [item, amount]);
+        setItem('');
+        setAmount('');
+        updateList();
+        Keyboard.dismiss();
+      } catch (error) {
+        console.error("Tallennusvirhe:", error);
+        Alert.alert("Virhe", "Tallennus epäonnistui.");
+      }
+    }
+  };
+
+  const deleteItem = async (id) => {
+    if (db) {
+      try {
+        await db.runAsync('DELETE FROM shoppingList WHERE id = ?', [id]);
+        updateList();
+      } catch (error) {
+        console.error("Poistovirhe:", error);
+      }
+    }
   };
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.container}>
-        <TextInput style={styles.input}
-          placeholder='Item'
-          onChangeText={text => setItem(text)}
-          value={item}
-        />
+      <PaperProvider theme={DefaultTheme}>
+        <SafeAreaView style={styles.container}>
 
-        <TextInput style={styles.input}
-          placeholder='Amount'
-          onChangeText={text => setAmount(text)}
-          value={amount}
-        />
+          <Appbar.Header elevated>
+            <Appbar.Content title="Shopping List" />
+          </Appbar.Header>
 
-        <View style={styles.buttons}>
-          <Button title='SAVE' onPress={saveItem} />
-        </View>
+          <View style={styles.container}>
+            <Card style={styles.card} mode="elevated">
+              <Card.Content>
+                <TextInput
+                  label="Product"
+                  mode='outlined'
+                  value={item}
+                  onChangeText={text => setItem(text)}
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Amount"
+                  mode='outlined'
+                  value={amount}
+                  onChangeText={text => setAmount(text)}
+                  style={styles.input}
+                />
+                <Button
+                  mode='contained'
+                  onPress={saveItem}
+                  icon="cart-plus"
+                  style={styles.button}
+                > Save Item </Button>
+              </Card.Content>
+            </Card>
 
-        <Text style={styles.title}>Shopping List</Text>
-        <FlatList
-          data={shoppingList}
-          keyExtractor={item => item.id.toString()}
-          renderItem={({ item }) => (
-            <View style={styles.listItemContainer}>
-              <Text style={styles.listItem}>{item.item}, {item.amount}</Text>
-              <TouchableOpacity onPress={() => deleteItem(item.id)}>
-                <Text style={styles.boughtText}> Bought</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        />
-        <StatusBar style='auto' />
-      </SafeAreaView>
+            <FlatList
+              data={shoppingList}
+              keyExtractor={item => item.id.toString()}
+              ItemSeparatorComponent={() => <Divider />}
+              renderItem={({ item }) => (
+                <List.Item
+                  title={item.item}
+                  description={item.amount}
+                  left={props => <List.Icon {...props} icon="shopping-outline" />}
+                  right={props => (
+                    <IconButton
+                      {...props}
+                      icon="trash-can-outline"
+                      iconColor='#B00020'
+                      onPress={() => deleteItem(item.id)}
+                    />
+                  )}
+                />
+              )}
+            />
+          </View>
+
+        </SafeAreaView>
+      </PaperProvider>
     </SafeAreaProvider>
   );
 }
@@ -81,53 +147,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
+  card: {
+    marginBottom: 16,
+    backgroundColor: '#fff',
+  },
   input: {
-    width: '50%',
-    borderColor: 'gray',
-    borderWidth: 1,
-    marginBottom: 10,
-    padding: 10,
-    textAlign: 'center',
+    marginBottom: 8,
+    backgroundColor: '#fff',
   },
-
-  buttons: {
-    flexDirection: 'row',
-    marginTop: 10,
-    justifyContent: 'space-between',
-  },
-
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'blue',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-
-  listItem: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 5,
-  },
-
-  list: {
-    width: '80%',
-  },
-
-  listItemContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-
-  boughtText: {
-    fontSize: 16,
-    color: 'blue',
-    marginLeft: 10,
+  button: {
+    marginTop: 8,
+    borderRadius: 4,
   },
 });
